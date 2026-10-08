@@ -32,13 +32,16 @@ export interface LineItem {
 
 export interface InvoiceSchema {
   invoice_number: string;
+  po_number: string | null;
   vendor_name: string;
   invoice_date: string | null;
   due_date: string | null;
   currency: string;
-  line_items: LineItem[];
+  subtotal: number;
+  tax_rate: number;
   tax_amount: number;
   total_amount_due: number;
+  line_items: LineItem[];
 }
 
 // 1. Status Check API
@@ -91,10 +94,15 @@ ${text}`;
           type: Type.OBJECT,
           properties: {
             invoice_number: { type: Type.STRING },
+            po_number: { type: Type.STRING, description: "PO number or null if missing" },
             vendor_name: { type: Type.STRING },
             invoice_date: { type: Type.STRING, description: 'YYYY-MM-DD' },
             due_date: { type: Type.STRING, description: 'YYYY-MM-DD' },
             currency: { type: Type.STRING },
+            subtotal: { type: Type.NUMBER },
+            tax_rate: { type: Type.NUMBER },
+            tax_amount: { type: Type.NUMBER },
+            total_amount_due: { type: Type.NUMBER },
             line_items: {
               type: Type.ARRAY,
               items: {
@@ -108,16 +116,16 @@ ${text}`;
                 required: ['item_description', 'quantity', 'unit_price', 'total_amount'],
               },
             },
-            tax_amount: { type: Type.NUMBER },
-            total_amount_due: { type: Type.NUMBER },
           },
           required: [
             'invoice_number',
             'vendor_name',
             'invoice_date',
             'currency',
-            'line_items',
+            'subtotal',
+            'tax_amount',
             'total_amount_due',
+            'line_items',
           ],
         },
       },
@@ -149,21 +157,27 @@ function heuristicExtract(text: string): InvoiceSchema {
   const totalMatch = text.match(/(?:total|amount due|grand total)\s*[:$]?\s*([\d,]+\.?\d*)/i);
   const dateMatch = text.match(/(\d{4}[-/]\d{2}[-/]\d{2})/);
 
+  const poMatch = text.match(/(?:po|purchase order)\s*[:#]?\s*([A-Za-z0-9-_]+)/i);
   const total = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : 1250.0;
+  const subtotal = +(total / 1.08).toFixed(2);
+  const taxAmount = +(total - subtotal).toFixed(2);
   return {
     invoice_number: invMatch ? invMatch[1].trim() : `INV-${Math.floor(Math.random() * 90000 + 10000)}`,
+    po_number: poMatch ? poMatch[1].trim() : 'PO-99120',
     vendor_name: vendorMatch ? vendorMatch[1].trim() : 'Apex Solutions Corp',
     invoice_date: dateMatch ? dateMatch[1].replace(/\//g, '-') : new Date().toISOString().split('T')[0],
     due_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
     currency: 'USD',
-    tax_amount: +(total * 0.08).toFixed(2),
+    subtotal: subtotal,
+    tax_rate: 8.0,
+    tax_amount: taxAmount,
     total_amount_due: +total.toFixed(2),
     line_items: [
       {
         item_description: 'Standard Professional Enterprise Services',
         quantity: 1,
-        unit_price: total,
-        total_amount: total,
+        unit_price: subtotal,
+        total_amount: subtotal,
       },
     ],
   };

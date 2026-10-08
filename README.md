@@ -1,99 +1,67 @@
 # 🚀 AutoExtract MIS & Executive Control Tower
+## Automated Supplier Invoice Reconciliation & Financial Leakage Audit Engine
 
-> **Production-grade automated unstructured document extraction, DuckDB SQL data hygiene validation, and Executive MIS analytics dashboard.**
-
----
-
-## 🎯 Executive Overview & Mission
-Manual extraction of unstructured vendor invoices, freight receipts, and inconsistent CSVs costs enterprise operations and finance teams thousands of manual hours and creates critical compliance risks.
-
-**AutoExtract MIS & Executive Control Tower** provides an automated data pipeline:
-1. **Unstructured Ingestion**: Ingests messy PDF invoices, vendor receipts, and CSV/Excel tables.
-2. **Local Layout Parsing (`pdfplumber`)**: Parses tabular bounding boxes and text structures locally.
-3. **LLM Schema Extraction (`Google Gemini Flash API`)**: Normalizes raw unformatted text into strictly validated JSON schemas.
-4. **DuckDB Analytics & Hygiene Engine**: Executes high-throughput in-memory SQL transformations to detect line-item math mismatches, duplicate vendor bills, and null schema fields.
-5. **Executive MIS Control Tower**: Interactive KPI metrics, spend velocity charts, vendor concentration treemaps, and line-item categorization.
-6. **Multi-Format Export**: One-click export to cleaned CSV, formatted Excel (`.xlsx`), and ERP-ready JSON schemas.
+> **Production-grade automated supplier invoice audit engine powered by Python, Streamlit, pdfplumber, DuckDB, Pandas, Plotly, and Google Gemini Flash API.**
 
 ---
 
-## 🏗️ Architecture & Tech Stack
+## 🎯 Problem Statement & Mission
+Finance and procurement teams manually audit thousands of supplier PDF invoices and vendor CSV logs. Overcharges, duplicate billing, quantity mismatches, missing purchase orders (PO), and incorrect tax calculations cause massive financial leakage.
+
+**AutoExtract MIS & Executive Control Tower** delivers an automated data reconciliation pipeline:
+1. **Unstructured Ingestion**: Ingests PDF supplier invoices and messy vendor CSV files.
+2. **Local Layout Extraction (`pdfplumber`)**: Parses tabular bounding boxes and text layers.
+3. **Structured Schema Normalization (`Gemini Flash API`)**: Normalizes raw unstructured data into a validated financial schema (PO #, vendor, line items, taxes, totals).
+4. **DuckDB Automated Audit Engine**: Runs 4 high-speed in-memory SQL audit checks to identify financial leakage.
+5. **Reconciliation Control Tower**: Executive KPIs (Total Billed, Total Leakage, Audit Pass Rate %, Top Overcharging Vendor) and Plotly visualizations.
+6. **Multi-Format Export**: One-click export to CSV, multi-sheet formatted Excel (`.xlsx`), and ERP JSON schemas.
+
+---
+
+## 🏗️ Architecture & Pipeline Flow
 
 ```
-   [ Unstructured PDFs / Invoices / CSVs ]
-                    │
-                    ▼
-     ┌──────────────────────────────┐
-     │   Local Layout Extraction    │  --> pdfplumber
-     └──────────────┬───────────────┘
-                    │ Raw unstructured text & tabular layouts
-                    ▼
-     ┌──────────────────────────────┐
-     │  Gemini Flash API Extractor  │  --> @google/genai / google-genai
-     └──────────────┬───────────────┘
-                    │ Validated JSON Schema ({ invoice_number, vendor, line_items, ... })
-                    ▼
-     ┌──────────────────────────────┐
-     │   DuckDB In-Memory Engine    │  --> In-memory SQL Hygiene & Transformations
-     └──────────────┬───────────────┘
-                    │
-         ┌──────────┴──────────┐
-         ▼                     ▼
-┌──────────────────┐  ┌──────────────────┐
-│  SQL Validations │  │ cleaned_mis_view │
-│  - Math mismatch │  └────────┬─────────┘
-│  - Duplicates    │           │
-│  - Null values   │           ▼
-└──────────────────┘  ┌──────────────────────────────────────────────┐
-                      │    Executive MIS Dashboard & Control Tower   │
-                      │  - Spend Velocity (Plotly)                   │
-                      │  - Vendor Concentration Donut / Treemap      │
-                      │  - Category Breakdown                        │
-                      │  - Multi-Format Exporter (CSV, Excel, JSON)  │
-                      └──────────────────────────────────────────────┘
+   [ Supplier PDF Invoices / Messy CSVs ]
+                     │
+                     ▼
+      ┌─────────────────────────────┐
+      │  Local Layout & Table Parse │  --> pdfplumber
+      └──────────────┬──────────────┘
+                     │ Raw text & bounding box coordinates
+                     ▼
+      ┌─────────────────────────────┐
+      │   Gemini Flash Extractor    │  --> @google/genai / google-genai
+      └──────────────┬──────────────┘
+                     │ Strict JSON (invoice_no, po_no, line_items, tax, totals)
+                     ▼
+      ┌─────────────────────────────┐
+      │   In-Memory DuckDB Engine   │  --> In-memory table: `invoices`
+      └──────────────┬──────────────┘
+                     │
+        ┌────────────┴────────────┐
+        ▼                         ▼
+┌───────────────────┐    ┌───────────────────────────────────┐
+│  4 SQL Audit Rules│    │    audited_mis_summary (View)     │
+│ 1. Overcharge     │    └─────────────────┬─────────────────┘
+│ 2. Duplicate Bill │                      │
+│ 3. Tax Calculation│                      ▼
+│ 4. Missing PO     │    ┌───────────────────────────────────┐
+└───────────────────┘    │  MIS Executive Control Tower      │
+                         │  - Sleek Light Theme (Sun/Moon)   │
+                         │  - Leakage & Discrepancy KPIs     │
+                         │  - Risk Priority Charts           │
+                         │  - Multi-Sheet Excel / CSV / JSON │
+                         └───────────────────────────────────┘
 ```
 
 ---
 
-## ⚡ Quickstart Guide (Streamlit Execution)
+## 🗃️ DuckDB SQL Audit & Financial Hygiene Rules
 
-### 1. Prerequisites
-- Python 3.10+
-- Google Gemini API Key
+The engine flattens invoices into an in-memory DuckDB table `invoices` and executes four automated audit queries:
 
-### 2. Installation
-```bash
-git clone <repo-url>
-cd autoextract-mis
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 3. Environment Configuration
-Create a `.env` file in the root directory:
-```bash
-GEMINI_API_KEY="your-gemini-api-key-here"
-```
-
-### 4. Run Application
-```bash
-streamlit run app.py
-```
-Access the application at `http://localhost:8501`.
-
----
-
-## 🗃️ DuckDB SQL Hygiene Rules
-
-The in-memory DuckDB engine registers raw extracted records into `raw_invoices` and runs three automated audit checks:
-
-### 1. Line Item Calculation Mismatch (`calc_total_mismatch`)
-Flags any line item where `(quantity * unit_price)` does not equal `total_amount` within a floating point margin of $0.02:
+### 1. Overcharge Check (`calc_total_mismatch`)
+Detects line-item overbilling where `(quantity * unit_price) != line_total` beyond floating-point tolerance ($0.02):
 ```sql
 SELECT 
     invoice_number, 
@@ -101,48 +69,83 @@ SELECT
     item_description, 
     quantity, 
     unit_price, 
-    total_amount,
-    ROUND(quantity * unit_price, 2) AS calculated_amount,
-    ROUND(ABS(total_amount - (quantity * unit_price)), 2) AS variance
-FROM raw_invoices
-WHERE ABS(total_amount - (quantity * unit_price)) > 0.02;
+    line_item_total,
+    ROUND(quantity * unit_price, 2) AS expected_line_total,
+    ROUND(line_item_total - (quantity * unit_price), 2) AS overcharge_leakage
+FROM invoices
+WHERE (line_item_total - (quantity * unit_price)) > 0.02;
 ```
 
-### 2. Duplicate Check (`duplicate_check`)
-Detects identical `invoice_number` + `vendor_name` pairs to avoid double-payment hazards:
+### 2. Duplicate Invoice Flag (`duplicate_check`)
+Flags identical `vendor_name` + `invoice_number` submissions to prevent double disbursement:
 ```sql
 SELECT 
     invoice_number, 
     vendor_name, 
-    COUNT(*) as duplicate_occurrences
+    COUNT(*) AS occurrence_count,
+    ROUND(SUM(total_amount_due), 2) AS potential_double_payment
 FROM (
-    SELECT DISTINCT invoice_number, vendor_name, invoice_date, total_amount_due 
-    FROM raw_invoices
+    SELECT DISTINCT invoice_number, vendor_name, total_amount_due, invoice_date 
+    FROM invoices
 )
 GROUP BY invoice_number, vendor_name
 HAVING COUNT(*) > 1;
 ```
 
-### 3. Missing Critical Attributes (`null_check`)
-Flags missing critical fields (`invoice_date`, `total_amount_due`, or `vendor_name`):
+### 3. Tax Calculation Validation (`tax_validation_check`)
+Validates that applied tax matches expected tax based on subtotal and rate:
+```sql
+SELECT 
+    invoice_number, 
+    vendor_name, 
+    subtotal, 
+    tax_rate, 
+    tax_amount,
+    ROUND(subtotal * (tax_rate / 100.0), 2) AS expected_tax,
+    ROUND(ABS(tax_amount - (subtotal * (tax_rate / 100.0))), 2) AS tax_discrepancy
+FROM (
+    SELECT DISTINCT invoice_number, vendor_name, subtotal, tax_rate, tax_amount
+    FROM invoices
+)
+WHERE ABS(tax_amount - (subtotal * (tax_rate / 100.0))) > 0.50;
+```
+
+### 4. Missing PO Number Flag (`missing_po_check`)
+Identifies rogue or unapproved procurement without a valid Purchase Order (PO):
 ```sql
 SELECT 
     invoice_number, 
     vendor_name, 
     invoice_date, 
-    total_amount_due
-FROM raw_invoices
-WHERE invoice_date IS NULL 
-   OR total_amount_due IS NULL 
-   OR total_amount_due <= 0 
-   OR vendor_name IS NULL 
-   OR TRIM(vendor_name) = '';
+    total_amount_due,
+    'Missing Purchase Order (PO Number)' AS audit_risk
+FROM invoices
+WHERE po_number IS NULL 
+   OR TRIM(po_number) = '' 
+   OR LOWER(po_number) IN ('none', 'n/a', 'null', 'pending');
 ```
 
 ---
 
-## 📊 Dashboard Capabilities
-- **KPI Metrics**: Total Spend Incurred, Total Invoices Parsed, Data Quality / Hygiene Score (%), Top Vendor Concentration.
-- **Visuals**: Plotly Spend Velocity timeline, Vendor Concentration Donut, Line-Item category bars.
-- **Audit Table**: Interactive filterable data grid with discrepancy badges (`Verified`, `Discrepancy Flagged`, `Missing Date`).
-- **Exporting**: Cleaned MIS CSV, Excel workbook with stylized headers, and ERP-compatible structured JSON.
+## ⚡ Local Setup & Execution Guide
+
+### 1. Requirements
+- Python 3.10+
+- Google Gemini API Key
+
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Environment Configuration
+Create a `.env` file in the project root:
+```bash
+GEMINI_API_KEY="your-gemini-api-key"
+```
+
+### 4. Run the Streamlit Application
+```bash
+streamlit run app.py
+```
+Open `http://localhost:8501` to access the Light-themed Executive Control Tower with the circular Sun/Moon theme switcher!

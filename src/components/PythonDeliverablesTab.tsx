@@ -1,95 +1,33 @@
 import React, { useState } from 'react';
-import { FileCode, Download, Copy, Check, Terminal, ExternalLink, CheckCircle } from 'lucide-react';
+import { FileCode, Download, Copy, Check, Terminal } from 'lucide-react';
 
-export const PythonDeliverablesTab: React.FC = () => {
+interface PythonDeliverablesTabProps {
+  theme: 'light' | 'dark';
+}
+
+export const PythonDeliverablesTab: React.FC<PythonDeliverablesTabProps> = ({ theme }) => {
+  const isDark = theme === 'dark';
   const [activeFile, setActiveFile] = useState<'app.py' | 'requirements.txt' | 'README.md'>('app.py');
   const [copied, setCopied] = useState<boolean>(false);
 
-  // App.py content excerpt for display and download
   const appPyContent = `"""
 AutoExtract MIS & Executive Control Tower
-Production-Grade Streamlit Application
-Tech Stack: Streamlit, DuckDB, Google Gemini Flash API, pdfplumber, Pandas, Plotly Express
+Automated Supplier Invoice Reconciliation & MIS Audit Engine
+Features: Sleek Light Theme by default with Circular Sun/Moon Toggle, 4 DuckDB Audit Checks
 """
 
 import os
 import io
 import json
-import re
 from datetime import datetime, date
 import streamlit as st
 import pandas as pd
 import duckdb
 import plotly.express as px
-import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-# Try importing google-genai
-try:
-    from google import genai
-    from google.genai import types
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
-
-# Try importing pdfplumber
-try:
-    import pdfplumber
-    PDFPLUMBER_AVAILABLE = True
-except ImportError:
-    PDFPLUMBER_AVAILABLE = False
-
-load_dotenv()
-
-# Streamlit Page Configuration
-st.set_page_config(
-    page_title="AutoExtract MIS & Executive Control Tower",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom Executive Dark Theme CSS
-CUSTOM_CSS = \"\"\"
-<style>
-    .stApp {
-        background-color: #0B0F19;
-        color: #F8FAFC;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    .header-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1.25rem 1.75rem;
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8));
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        border-radius: 14px;
-        margin-bottom: 1.5rem;
-    }
-    .status-badge {
-        padding: 6px 14px;
-        border-radius: 9999px;
-        font-size: 0.82rem;
-        font-weight: 600;
-    }
-    .badge-duckdb {
-        background: rgba(245, 158, 11, 0.15);
-        color: #FBBF24;
-        border: 1px solid rgba(245, 158, 11, 0.3);
-    }
-    .kpi-card {
-        background: linear-gradient(145deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.75));
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 1.25rem 1.5rem;
-    }
-</style>
-\"\"\"
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-# Full code is saved in /app.py in project root.
+# Run locally with: streamlit run app.py
+# Complete code is saved directly in /app.py in project root.
 `;
 
   const requirementsContent = `streamlit>=1.38.0
@@ -99,31 +37,25 @@ google-genai>=1.0.0
 pandas>=2.2.0
 plotly>=5.24.0
 openpyxl>=3.1.5
-python-dotenv>=1.0.1
 pyarrow>=17.0.0
+python-dotenv>=1.0.1
 `;
 
   const readmeContent = `# 🚀 AutoExtract MIS & Executive Control Tower
+## Automated Supplier Invoice Reconciliation & Financial Leakage Audit Engine
 
-> **Production-grade automated unstructured document extraction, DuckDB SQL data hygiene validation, and Executive MIS analytics dashboard.**
+### 4 Automated DuckDB Audit Rules:
+1. Overcharge Check: (quantity * unit_price) != line_total
+2. Duplicate Invoice Flag: Identical vendor_name + invoice_number
+3. Tax Calculation Validation: subtotal * (tax_rate / 100) != tax_amount
+4. Missing PO Number Flag: Null or blank po_number
 
-### Quickstart Guide:
+### Quickstart Commands:
 \`\`\`bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Configure .env with your Gemini API key
-echo 'GEMINI_API_KEY="your-key-here"' > .env
-
-# 3. Launch the Streamlit application
+export GEMINI_API_KEY="your-gemini-key"
 streamlit run app.py
 \`\`\`
-
-### Architecture:
-1. pdfplumber -> Local Layout Parsing & Text Bounding Boxes
-2. Gemini 3.8/2.5 Flash -> Strict JSON Schema Extraction
-3. DuckDB In-Memory -> SQL Hygiene Validation (calc_total_mismatch, duplicate_check, null_check)
-4. Plotly Express -> Executive MIS Visualizations
 `;
 
   const getFileContent = () => {
@@ -133,7 +65,7 @@ streamlit run app.py
   };
 
   const handleDownload = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -152,16 +84,26 @@ streamlit run app.py
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-slate-900/90 via-slate-900/80 to-slate-950/90 p-5 shadow-xl backdrop-blur-md">
+      <div
+        className={`rounded-2xl border p-5 shadow-sm transition-all ${
+          isDark
+            ? 'bg-slate-900/90 border-slate-800 text-white'
+            : 'bg-white border-slate-200/90 text-slate-900'
+        }`}
+      >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border ${
+                isDark ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-600'
+              }`}
+            >
               <FileCode className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Streamlit Python Deliverables & Quickstart</h2>
-              <p className="text-xs text-slate-400">
-                Created in the project root: <code className="text-indigo-400 font-bold">app.py</code>, <code className="text-indigo-400 font-bold">requirements.txt</code>, and <code className="text-indigo-400 font-bold">README.md</code>.
+              <h2 className="text-lg font-bold">Python Streamlit Deliverables (Single-File app.py)</h2>
+              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Refactored with Sleek Light Theme by default, circular Sun/Moon toggle, and 4 DuckDB audit checks.
               </p>
             </div>
           </div>
@@ -169,14 +111,16 @@ streamlit run app.py
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleDownload('app.py', appPyContent)}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 transition-all shadow-md"
+              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 shadow-sm"
             >
               <Download className="h-3.5 w-3.5" />
               <span>Download app.py</span>
             </button>
             <button
               onClick={() => handleDownload('requirements.txt', requirementsContent)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white transition-all"
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                isDark ? 'border-slate-700 bg-slate-800 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'
+              }`}
             >
               <Download className="h-3.5 w-3.5" />
               <span>requirements.txt</span>
@@ -185,25 +129,37 @@ streamlit run app.py
         </div>
       </div>
 
-      {/* Terminal Command Quickstart */}
-      <div className="rounded-2xl border border-white/5 bg-slate-900/70 p-5 shadow-xl backdrop-blur-md space-y-3">
-        <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+      {/* Terminal Steps */}
+      <div
+        className={`rounded-2xl border p-5 shadow-sm space-y-3 transition-all ${
+          isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/90'
+        }`}
+      >
+        <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
           <Terminal className="h-4 w-4" />
-          <span>Local Python Execution Steps</span>
+          <span>Local Python Streamlit Execution Commands</span>
         </div>
-        <div className="rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-300 border border-slate-800 space-y-1">
-          <p className="text-slate-500"># 1. Install Streamlit, DuckDB, Gemini SDK, pdfplumber</p>
-          <p className="text-indigo-300 font-semibold">pip install -r requirements.txt</p>
+        <div
+          className={`rounded-xl p-4 font-mono text-xs space-y-1 border ${
+            isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-900 border-slate-800 text-slate-200'
+          }`}
+        >
+          <p className="text-slate-500"># 1. Install dependencies</p>
+          <p className="text-indigo-400 font-semibold">pip install -r requirements.txt</p>
           <p className="text-slate-500 pt-2"># 2. Set your Google Gemini API key</p>
-          <p className="text-indigo-300 font-semibold">export GEMINI_API_KEY="your-gemini-key"</p>
-          <p className="text-slate-500 pt-2"># 3. Launch Streamlit Executive MIS Application</p>
+          <p className="text-indigo-400 font-semibold">export GEMINI_API_KEY="your-gemini-key"</p>
+          <p className="text-slate-500 pt-2"># 3. Launch Streamlit Executive Application</p>
           <p className="text-emerald-400 font-bold">streamlit run app.py</p>
         </div>
       </div>
 
       {/* File Viewer */}
-      <div className="rounded-2xl border border-white/5 bg-slate-900/80 p-5 shadow-xl backdrop-blur-md space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <div
+        className={`rounded-2xl border p-5 shadow-sm space-y-4 transition-all ${
+          isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/90'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             {(['app.py', 'requirements.txt', 'README.md'] as const).map((fname) => (
               <button
@@ -211,8 +167,10 @@ streamlit run app.py
                 onClick={() => setActiveFile(fname)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
                   activeFile === fname
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : isDark
+                    ? 'bg-slate-800 text-slate-400 hover:text-white'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900'
                 }`}
               >
                 {fname}
@@ -223,14 +181,18 @@ streamlit run app.py
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:text-white transition-all"
+              className={`flex items-center gap-1 rounded-lg border px-3 py-1 text-xs ${
+                isDark ? 'border-slate-700 bg-slate-800 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'
+              }`}
             >
-              {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{copied ? 'Copied' : 'Copy Code'}</span>
+              {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
             <button
               onClick={() => handleDownload(activeFile, getFileContent())}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:text-white transition-all"
+              className={`flex items-center gap-1 rounded-lg border px-3 py-1 text-xs ${
+                isDark ? 'border-slate-700 bg-slate-800 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'
+              }`}
             >
               <Download className="h-3.5 w-3.5" />
               <span>Download</span>
@@ -238,7 +200,11 @@ streamlit run app.py
           </div>
         </div>
 
-        <pre className="max-h-96 overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-300 border border-slate-800 leading-relaxed">
+        <pre
+          className={`max-h-80 overflow-auto rounded-xl p-4 font-mono text-xs border ${
+            isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-900 border-slate-800 text-slate-200'
+          }`}
+        >
           {getFileContent()}
         </pre>
       </div>

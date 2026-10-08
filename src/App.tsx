@@ -5,11 +5,10 @@ import {
   BarChart3,
   Download,
   Code2,
-  FileCheck,
 } from 'lucide-react';
-import { InvoiceRecord } from './types';
-import { INITIAL_INVOICES, UNSTRUCTURED_PRESETS } from './mockData';
-import { evaluateDuckDBHygiene, flattenInvoices } from './utils/duckdbEngine';
+import { SupplierInvoiceRecord } from './types';
+import { INITIAL_SUPPLIER_INVOICES, UNSTRUCTURED_PRESETS } from './mockData';
+import { evaluateFourWayAudit, flattenSupplierInvoices } from './utils/duckdbEngine';
 import { Header } from './components/Header';
 import { KpiMetricsBar } from './components/KpiMetricsBar';
 import { IngestionTab } from './components/IngestionTab';
@@ -19,20 +18,27 @@ import { ExportTab } from './components/ExportTab';
 import { PythonDeliverablesTab } from './components/PythonDeliverablesTab';
 
 export default function App() {
-  const [invoices, setInvoices] = useState<InvoiceRecord[]>(INITIAL_INVOICES);
+  // SLEEK LIGHT THEME BY DEFAULT (as requested: "#FFFFFF / #F8FAFC surface backgrounds, dark slate typography #0F172A")
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [invoices, setInvoices] = useState<SupplierInvoiceRecord[]>(INITIAL_SUPPLIER_INVOICES);
   const [activeTab, setActiveTab] = useState<number>(0);
 
-  // Compute DuckDB In-Memory SQL hygiene validation & cleaned MIS summary
-  const validationResults = useMemo(() => {
-    return evaluateDuckDBHygiene(invoices);
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  const isDark = theme === 'dark';
+
+  // Evaluate 4-way financial audit checks in DuckDB engine
+  const auditResults = useMemo(() => {
+    return evaluateFourWayAudit(invoices);
   }, [invoices]);
 
   const rawFlattenedInvoices = useMemo(() => {
-    return flattenInvoices(invoices);
+    return flattenSupplierInvoices(invoices);
   }, [invoices]);
 
-  // Actions
-  const handleAddInvoice = (newInv: InvoiceRecord) => {
+  const handleAddInvoice = (newInv: SupplierInvoiceRecord) => {
     setInvoices((prev) => [newInv, ...prev]);
   };
 
@@ -40,12 +46,12 @@ export default function App() {
     setInvoices((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const handleAddBatch = (batch: InvoiceRecord[]) => {
+  const handleAddBatch = (batch: SupplierInvoiceRecord[]) => {
     setInvoices((prev) => [...batch, ...prev]);
   };
 
   const handleResetDemo = () => {
-    setInvoices(INITIAL_INVOICES);
+    setInvoices(INITIAL_SUPPLIER_INVOICES);
   };
 
   const handleClear = () => {
@@ -54,20 +60,23 @@ export default function App() {
 
   const handleLoadPreset = () => {
     const preset = UNSTRUCTURED_PRESETS[Math.floor(Math.random() * UNSTRUCTURED_PRESETS.length)];
-    const newInv: InvoiceRecord = {
+    const newInv: SupplierInvoiceRecord = {
       id: `preset-${Date.now()}`,
       invoice_number: `PRESET-${Math.floor(Math.random() * 9000 + 1000)}`,
+      po_number: `PO-${Math.floor(Math.random() * 90000 + 10000)}`,
       vendor_name: preset.vendor,
       invoice_date: '2026-03-29',
       due_date: '2026-04-28',
       currency: 'USD',
-      tax_amount: 180.0,
-      total_amount_due: 3480.0,
+      subtotal: 3300.0,
+      tax_rate: 8.5,
+      tax_amount: 280.5,
+      total_amount_due: 3580.5,
       source_type: 'pdf',
       source_file: `${preset.title.slice(0, 20)}.pdf`,
       line_items: [
         {
-          item_description: preset.category + ' Core Enterprise Service Tier',
+          item_description: preset.category + ' Reconciled Service Tier',
           quantity: 1,
           unit_price: 3300.0,
           total_amount: 3300.0,
@@ -77,30 +86,31 @@ export default function App() {
     handleAddInvoice(newInv);
   };
 
-  const totalViolations =
-    validationResults.calc_total_mismatch.length +
-    validationResults.duplicate_check.length +
-    validationResults.null_check.length;
+  const totalFlags =
+    auditResults.overcharge_check.length +
+    auditResults.duplicate_check.length +
+    auditResults.tax_validation_check.length +
+    auditResults.missing_po_check.length;
 
   const tabs = [
     {
       label: 'Document Ingestion & Extraction Lab',
       icon: FileText,
-      badge: `${invoices.length} docs`,
+      badge: `${invoices.length} Invoices`,
     },
     {
-      label: 'DuckDB SQL Cleaning & Validation Rules',
+      label: 'DuckDB 4-Way Financial Audit Engine',
       icon: Database,
-      badge: totalViolations > 0 ? `${totalViolations} flags` : 'Clean',
-      badgeColor: totalViolations > 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300',
+      badge: totalFlags > 0 ? `${totalFlags} Flags` : 'Clean',
+      badgeColor: totalFlags > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
     },
     {
-      label: 'Executive MIS Dashboard & Control Tower',
+      label: 'MIS Analytics & Reconciliation Tower',
       icon: BarChart3,
       badge: 'Live MIS',
     },
     {
-      label: 'Multi-Format Data Exporter',
+      label: 'Multi-Format Audit Exporter',
       icon: Download,
       badge: 'CSV • Excel • JSON',
     },
@@ -112,27 +122,38 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-slate-100 p-4 sm:p-6 lg:p-8 selection:bg-indigo-500/30">
+    <div
+      className={`min-h-screen transition-colors duration-300 ${
+        isDark ? 'bg-[#0B0F19] text-slate-100' : 'bg-[#F8FAFC] text-slate-900'
+      } p-4 sm:p-6 lg:p-8`}
+    >
       <div className="mx-auto max-w-7xl">
-        {/* Header Bar */}
+        {/* Header Bar with Circular Sun/Moon Toggle */}
         <Header
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onResetDemo={handleResetDemo}
           onClear={handleClear}
           onLoadPreset={handleLoadPreset}
           invoiceCount={invoices.length}
         />
 
-        {/* KPI Metrics Bar */}
+        {/* Financial Summary KPIs */}
         <KpiMetricsBar
-          totalSpend={validationResults.total_spend}
-          totalInvoices={validationResults.total_invoices}
-          hygieneScore={validationResults.hygiene_score}
-          topVendor={validationResults.top_vendor}
-          violationsCount={totalViolations}
+          totalBilled={auditResults.total_billed}
+          totalLeakage={auditResults.total_leakage}
+          auditPassRate={auditResults.audit_pass_rate}
+          topOverchargingVendor={auditResults.top_overcharging_vendor}
+          totalInvoices={auditResults.unique_invoices_count}
+          theme={theme}
         />
 
         {/* Tab Navigation */}
-        <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-white/5 bg-slate-900/60 p-1.5 backdrop-blur-md">
+        <div
+          className={`mb-6 flex flex-wrap gap-1.5 rounded-2xl border p-1.5 transition-all ${
+            isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200/90 shadow-sm'
+          }`}
+        >
           {tabs.map((tab, idx) => {
             const Icon = tab.icon;
             const isActive = activeTab === idx;
@@ -140,10 +161,12 @@ export default function App() {
               <button
                 key={idx}
                 onClick={() => setActiveTab(idx)}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : isDark
+                    ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -152,7 +175,7 @@ export default function App() {
                 {tab.badge && (
                   <span
                     className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
-                      tab.badgeColor || (isActive ? 'bg-indigo-700 text-white' : 'bg-slate-800 text-slate-400')
+                      tab.badgeColor || (isActive ? 'bg-indigo-700 text-white' : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-700')
                     }`}
                   >
                     {tab.badge}
@@ -163,7 +186,7 @@ export default function App() {
           })}
         </div>
 
-        {/* Tab Contents */}
+        {/* Tab Panels */}
         <main className="transition-opacity duration-200">
           {activeTab === 0 && (
             <IngestionTab
@@ -171,32 +194,36 @@ export default function App() {
               onAddInvoice={handleAddInvoice}
               onDeleteInvoice={handleDeleteInvoice}
               onAddBatch={handleAddBatch}
+              theme={theme}
             />
           )}
 
           {activeTab === 1 && (
             <DuckDbValidationTab
-              validationResults={validationResults}
+              auditResults={auditResults}
               rawInvoices={rawFlattenedInvoices}
+              theme={theme}
             />
           )}
 
           {activeTab === 2 && (
             <ExecutiveDashboardTab
-              cleanedSummary={validationResults.cleaned_mis_summary}
+              auditedSummary={auditResults.audited_mis_summary}
               rawInvoices={rawFlattenedInvoices}
+              theme={theme}
             />
           )}
 
           {activeTab === 3 && (
             <ExportTab
               invoices={invoices}
-              cleanedSummary={validationResults.cleaned_mis_summary}
+              auditedSummary={auditResults.audited_mis_summary}
               rawInvoices={rawFlattenedInvoices}
+              theme={theme}
             />
           )}
 
-          {activeTab === 4 && <PythonDeliverablesTab />}
+          {activeTab === 4 && <PythonDeliverablesTab theme={theme} />}
         </main>
       </div>
     </div>

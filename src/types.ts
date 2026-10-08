@@ -5,36 +5,43 @@ export interface LineItem {
   total_amount: number;
 }
 
-export interface InvoiceRecord {
+export interface SupplierInvoiceRecord {
   id: string;
   invoice_number: string;
+  po_number: string | null;
   vendor_name: string;
   invoice_date: string | null;
   due_date: string | null;
   currency: string;
-  line_items: LineItem[];
+  subtotal: number;
+  tax_rate: number;
   tax_amount: number;
   total_amount_due: number;
+  line_items: LineItem[];
   source_file?: string;
   source_type?: 'pdf' | 'csv' | 'manual' | 'sample';
 }
 
-export interface FlattenedRow {
+export interface FlattenedSupplierRow {
   invoice_id: string;
   invoice_number: string;
+  po_number: string | null;
   vendor_name: string;
   invoice_date: string | null;
   due_date: string | null;
   currency: string;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
   item_description: string;
   quantity: number;
   unit_price: number;
   line_item_total: number;
-  tax_amount: number;
   total_amount_due: number;
 }
 
-export interface CalcMismatchViolation {
+// 1. Overcharge Violation Check
+export interface OverchargeViolation {
   invoice_number: string;
   vendor_name: string;
   item_description: string;
@@ -42,45 +49,63 @@ export interface CalcMismatchViolation {
   unit_price: number;
   line_item_total: number;
   expected_line_total: number;
-  variance: number;
+  overcharge_amount: number;
 }
 
+// 2. Duplicate Invoice Violation Check
 export interface DuplicateViolation {
   invoice_number: string;
   vendor_name: string;
   occurrence_count: number;
+  potential_double_pay_amount: number;
   duplicate_ids: string[];
 }
 
-export interface NullCheckViolation {
+// 3. Tax Calculation Violation Check
+export interface TaxCalculationViolation {
+  invoice_number: string;
+  vendor_name: string;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  expected_tax: number;
+  tax_variance: number;
+}
+
+// 4. Missing PO Number Violation Check
+export interface MissingPOViolation {
   invoice_number: string;
   vendor_name: string;
   invoice_date: string | null;
   total_amount_due: number;
-  reason: string;
+  risk_reason: string;
 }
 
-export interface CleanedMISRecord {
+export interface AuditedMISRecord {
   invoice_number: string;
   vendor_name: string;
+  po_number: string;
   invoice_date: string;
   due_date: string;
   currency: string;
   item_count: number;
-  items_sum: number;
+  subtotal: number;
   tax_amount: number;
   total_amount_due: number;
-  audit_status: 'Verified Clean' | 'Calc Mismatch Flag' | 'Duplicate Flag' | 'Missing Critical Metadata';
-  discrepancy_details?: string;
+  audit_status: 'VERIFIED' | 'OVERCHARGED' | 'DUPLICATE' | 'MISSING PO';
+  leakage_amount: number;
+  discrepancy_details: string;
 }
 
-export interface DuckDBValidationResults {
-  calc_total_mismatch: CalcMismatchViolation[];
+export interface FourWayAuditResults {
+  overcharge_check: OverchargeViolation[];
   duplicate_check: DuplicateViolation[];
-  null_check: NullCheckViolation[];
-  cleaned_mis_summary: CleanedMISRecord[];
-  hygiene_score: number;
-  total_spend: number;
-  total_invoices: number;
-  top_vendor: string;
+  tax_validation_check: TaxCalculationViolation[];
+  missing_po_check: MissingPOViolation[];
+  audited_mis_summary: AuditedMISRecord[];
+  total_billed: number;
+  total_leakage: number;
+  audit_pass_rate: number;
+  top_overcharging_vendor: string;
+  unique_invoices_count: number;
 }

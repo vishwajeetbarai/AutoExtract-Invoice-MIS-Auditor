@@ -1,23 +1,24 @@
 import {
-  InvoiceRecord,
-  FlattenedRow,
-  CalcMismatchViolation,
+  SupplierInvoiceRecord,
+  FlattenedSupplierRow,
+  OverchargeViolation,
   DuplicateViolation,
-  NullCheckViolation,
-  CleanedMISRecord,
-  DuckDBValidationResults,
+  TaxCalculationViolation,
+  MissingPOViolation,
+  AuditedMISRecord,
+  FourWayAuditResults,
 } from '../types';
 
 /**
- * Flattens invoice documents into raw line items for DuckDB tables
+ * Flattens supplier invoice records into tabular line items for DuckDB
  */
-export function flattenInvoices(invoices: InvoiceRecord[]): FlattenedRow[] {
-  const rows: FlattenedRow[] = [];
+export function flattenSupplierInvoices(invoices: SupplierInvoiceRecord[]): FlattenedSupplierRow[] {
+  const rows: FlattenedSupplierRow[] = [];
 
   for (const inv of invoices) {
     const lines = inv.line_items && inv.line_items.length > 0 ? inv.line_items : [
       {
-        item_description: 'General Unspecified Service',
+        item_description: 'Standard Unspecified Line Item',
         quantity: 1,
         unit_price: inv.total_amount_due || 0,
         total_amount: inv.total_amount_due || 0,
@@ -28,15 +29,18 @@ export function flattenInvoices(invoices: InvoiceRecord[]): FlattenedRow[] {
       rows.push({
         invoice_id: inv.id,
         invoice_number: inv.invoice_number,
+        po_number: inv.po_number,
         vendor_name: inv.vendor_name,
         invoice_date: inv.invoice_date,
         due_date: inv.due_date,
         currency: inv.currency || 'USD',
+        subtotal: Number(inv.subtotal) || 0,
+        tax_rate: Number(inv.tax_rate) || 0,
+        tax_amount: Number(inv.tax_amount) || 0,
         item_description: item.item_description,
         quantity: Number(item.quantity) || 1,
         unit_price: Number(item.unit_price) || 0,
         line_item_total: Number(item.total_amount) || 0,
-        tax_amount: Number(inv.tax_amount) || 0,
         total_amount_due: Number(inv.total_amount_due) || 0,
       });
     }
@@ -46,21 +50,18 @@ export function flattenInvoices(invoices: InvoiceRecord[]): FlattenedRow[] {
 }
 
 /**
- * Runs DuckDB SQL Hygiene Rules:
- * 1. calc_total_mismatch: flags where ABS(line_item_total - (quantity * unit_price)) > 0.02
- * 2. duplicate_check: flags identical (invoice_number, vendor_name)
- * 3. null_check: flags missing invoice_date, vendor_name, or total_amount_due <= 0
+ * Evaluates the 4 Automated DuckDB Financial Audit Checks
  */
-export function evaluateDuckDBHygiene(invoices: InvoiceRecord[]): DuckDBValidationResults {
-  const flattened = flattenInvoices(invoices);
+export function evaluateFourWayAudit(invoices: SupplierInvoiceRecord[]): FourWayAuditResults {
+  const flattened = flattenSupplierInvoices(invoices);
 
-  // 1. Line Item Calculation Mismatch (calc_total_mismatch)
-  const calcMismatches: CalcMismatchViolation[] = [];
+  // 1. Overcharge Check: (quantity * unit_price) != line_item_total
+  const overcharges: OverchargeViolation[] = [];
   for (const row of flattened) {
     const expected = Number((row.quantity * row.unit_price).toFixed(2));
-    const variance = Number(Math.abs(row.line_item_total - expected).toFixed(2));
+    const variance = Number((row.line_item_total - expected).toFixed(2));
     if (variance > 0.02) {
-      calcMismatches.push({
+      overcharges.push({
         invoice_number: row.invoice_number,
         vendor_name: row.vendor_name,
         item_description: row.item_description,
@@ -68,16 +69,22 @@ export function evaluateDuckDBHygiene(invoices: InvoiceRecord[]): DuckDBValidati
         unit_price: row.unit_price,
         line_item_total: row.line_item_total,
         expected_line_total: expected,
-        variance,
+        overcharge_amount: variance,
       });
     }
   }
 
-  // 2. Duplicate Check (duplicate_check)
-  const pairCounts = new Map<string, { count: number; ids: string[]; vendor: string; invNum: string }>();
+  // 2. Duplicate Invoice Flag: Identical vendor_name + invoice_number
+  const pairCounts = new Map<string, { count: number; totalDue: number; ids: string[]; vendor: string; invNum: string }>();
   for (const inv of invoices) {
     const key = `${inv.invoice_number.trim().toUpperCase()}:::${inv.vendor_name.trim().toUpperCase()}`;
-    const curr = pairCounts.get(key) || { count: 0, ids: [], vendor: inv.vendor_name, invNum: inv.invoice_number };
+    const curr = pairCounts.get(key) || {
+      count: 0,
+      totalDue: inv.total_amount_due,
+      ids: [],
+      vendor: inv.vendor_name,
+      invNum: inv.invoice_number,
+    };
     curr.count += 1;
     curr.ids.push(inv.id);
     pairCounts.set(key, curr);
@@ -90,214 +97,211 @@ export function evaluateDuckDBHygiene(invoices: InvoiceRecord[]): DuckDBValidati
         invoice_number: val.invNum,
         vendor_name: val.vendor,
         occurrence_count: val.count,
+        potential_double_pay_amount: val.totalDue,
         duplicate_ids: val.ids,
       });
     }
   }
 
-  // 3. Null Check (null_check)
-  const nullChecks: NullCheckViolation[] = [];
+  // 3. Tax Calculation Validation: subtotal * (tax_rate / 100) != tax_amount
+  const taxErrors: TaxCalculationViolation[] = [];
   for (const inv of invoices) {
-    const isMissingDate = !inv.invoice_date || inv.invoice_date.trim() === '';
-    const isMissingVendor = !inv.vendor_name || inv.vendor_name.trim() === '';
-    const isInvalidTotal = inv.total_amount_due == null || isNaN(inv.total_amount_due) || inv.total_amount_due <= 0;
+    if (inv.subtotal > 0 && inv.tax_rate >= 0) {
+      const expectedTax = Number((inv.subtotal * (inv.tax_rate / 100.0)).toFixed(2));
+      const variance = Number(Math.abs(inv.tax_amount - expectedTax).toFixed(2));
+      if (variance > 0.50) {
+        taxErrors.push({
+          invoice_number: inv.invoice_number,
+          vendor_name: inv.vendor_name,
+          subtotal: inv.subtotal,
+          tax_rate: inv.tax_rate,
+          tax_amount: inv.tax_amount,
+          expected_tax: expectedTax,
+          tax_variance: variance,
+        });
+      }
+    }
+  }
 
-    if (isMissingDate || isMissingVendor || isInvalidTotal) {
-      const reasons: string[] = [];
-      if (isMissingDate) reasons.push('Missing Invoice Date');
-      if (isMissingVendor) reasons.push('Missing Vendor Name');
-      if (isInvalidTotal) reasons.push('Invalid / Zero Total Due');
+  // 4. Missing PO Number Flag: Null or blank po_number
+  const missingPOs: MissingPOViolation[] = [];
+  for (const inv of invoices) {
+    const isMissing =
+      !inv.po_number ||
+      inv.po_number.trim() === '' ||
+      ['none', 'null', 'n/a', 'pending'].includes(inv.po_number.trim().toLowerCase());
 
-      nullChecks.push({
+    if (isMissing) {
+      missingPOs.push({
         invoice_number: inv.invoice_number,
-        vendor_name: inv.vendor_name || 'UNSPECIFIED',
+        vendor_name: inv.vendor_name,
         invoice_date: inv.invoice_date,
         total_amount_due: inv.total_amount_due,
-        reason: reasons.join(' & '),
+        risk_reason: 'Rogue / Unapproved Procurement without an authorized Purchase Order',
       });
     }
   }
 
-  // 4. Cleaned MIS Summary View
-  const cleanedSummary: CleanedMISRecord[] = invoices.map((inv) => {
+  // Audited MIS Summary View
+  const auditedSummary: AuditedMISRecord[] = invoices.map((inv) => {
     const lines = inv.line_items || [];
-    const itemsSum = lines.reduce((acc, it) => acc + (Number(it.total_amount) || 0), 0);
-    const hasMismatch = calcMismatches.some((m) => m.invoice_number === inv.invoice_number);
+    const hasOvercharge = overcharges.some((o) => o.invoice_number === inv.invoice_number);
     const hasDup = duplicates.some((d) => d.invoice_number === inv.invoice_number);
-    const hasNull = nullChecks.some((n) => n.invoice_number === inv.invoice_number);
+    const hasTaxErr = taxErrors.some((t) => t.invoice_number === inv.invoice_number);
+    const hasMissingPO = missingPOs.some((m) => m.invoice_number === inv.invoice_number);
 
-    let status: CleanedMISRecord['audit_status'] = 'Verified Clean';
-    let detail = 'Passed all DuckDB arithmetic & metadata sanity checks';
+    let status: AuditedMISRecord['audit_status'] = 'VERIFIED';
+    let detail = 'Passed all 4 DuckDB financial audit checks';
+    let leak = 0;
 
-    if (hasNull) {
-      status = 'Missing Critical Metadata';
-      detail = 'Missing invoice date or invalid total amount due';
-    } else if (hasMismatch) {
-      status = 'Calc Mismatch Flag';
-      detail = 'Line item quantity * unit_price != total amount';
-    } else if (hasDup) {
-      status = 'Duplicate Flag';
-      detail = 'Duplicate invoice number identified for vendor';
+    if (hasDup) {
+      status = 'DUPLICATE';
+      detail = 'Duplicate bill submission; potential double disbursement';
+      leak = inv.total_amount_due;
+    } else if (hasOvercharge) {
+      status = 'OVERCHARGED';
+      const ov = overcharges.find((o) => o.invoice_number === inv.invoice_number);
+      leak = ov ? ov.overcharge_amount : 0;
+      detail = `Line item math mismatch: billed higher by $${leak.toFixed(2)}`;
+    } else if (hasMissingPO) {
+      status = 'MISSING PO';
+      detail = 'Missing authorized Purchase Order (PO)';
+    } else if (hasTaxErr) {
+      status = 'OVERCHARGED';
+      const tx = taxErrors.find((t) => t.invoice_number === inv.invoice_number);
+      leak = tx ? tx.tax_variance : 0;
+      detail = `Tax computation discrepancy of $${leak.toFixed(2)}`;
     }
 
     return {
       invoice_number: inv.invoice_number,
       vendor_name: inv.vendor_name,
+      po_number: inv.po_number || 'MISSING',
       invoice_date: inv.invoice_date || '1970-01-01',
       due_date: inv.due_date || '1970-01-01',
       currency: inv.currency || 'USD',
       item_count: lines.length,
-      items_sum: Number(itemsSum.toFixed(2)),
-      tax_amount: Number((inv.tax_amount || 0).toFixed(2)),
-      total_amount_due: Number((inv.total_amount_due || 0).toFixed(2)),
+      subtotal: Number(inv.subtotal.toFixed(2)),
+      tax_amount: Number(inv.tax_amount.toFixed(2)),
+      total_amount_due: Number(inv.total_amount_due.toFixed(2)),
       audit_status: status,
+      leakage_amount: leak,
       discrepancy_details: detail,
     };
   });
 
-  // Calculate Metrics
+  // Financial Leakage Metrics
+  const totalBilled = invoices.reduce((acc, inv) => acc + (Number(inv.total_amount_due) || 0), 0);
+
+  const totalOverchargeLeakage = overcharges.reduce((acc, o) => acc + o.overcharge_amount, 0);
+  const totalTaxLeakage = taxErrors.reduce((acc, t) => acc + t.tax_variance, 0);
+  const totalDuplicateLeakage = duplicates.reduce((acc, d) => acc + d.potential_double_pay_amount, 0);
+  const totalLeakage = totalOverchargeLeakage + totalTaxLeakage + totalDuplicateLeakage;
+
   const totalInvoices = invoices.length;
-  const flaggedCount = calcMismatches.length + duplicates.length + nullChecks.length;
-  const hygieneScore = totalInvoices > 0
+  const flaggedCount = overcharges.length + duplicates.length + taxErrors.length + missingPOs.length;
+  const auditPassRate = totalInvoices > 0
     ? Math.max(0, Math.min(100, Math.round(((totalInvoices - Math.min(flaggedCount, totalInvoices)) / totalInvoices) * 100)))
     : 100;
 
-  const totalSpend = invoices.reduce((acc, inv) => acc + (Number(inv.total_amount_due) || 0), 0);
-
-  // Top Vendor
-  const vendorSpendMap = new Map<string, number>();
-  for (const inv of invoices) {
-    const v = inv.vendor_name || 'Unknown';
-    vendorSpendMap.set(v, (vendorSpendMap.get(v) || 0) + (Number(inv.total_amount_due) || 0));
+  // Top Overcharging Vendor
+  const vendorOverchargeMap = new Map<string, number>();
+  for (const o of overcharges) {
+    vendorOverchargeMap.set(o.vendor_name, (vendorOverchargeMap.get(o.vendor_name) || 0) + o.overcharge_amount);
   }
-  let topVendor = 'None';
-  let maxSpend = -1;
-  for (const [vendor, spend] of vendorSpendMap.entries()) {
-    if (spend > maxSpend) {
-      maxSpend = spend;
-      topVendor = vendor;
+  let topOverchargingVendor = 'None';
+  let maxOvercharge = -1;
+  for (const [vendor, leakAmt] of vendorOverchargeMap.entries()) {
+    if (leakAmt > maxOvercharge) {
+      maxOvercharge = leakAmt;
+      topOverchargingVendor = vendor;
     }
   }
 
   return {
-    calc_total_mismatch: calcMismatches,
+    overcharge_check: overcharges,
     duplicate_check: duplicates,
-    null_check: nullChecks,
-    cleaned_mis_summary: cleanedSummary,
-    hygiene_score: hygieneScore,
-    total_spend: totalSpend,
-    total_invoices: totalInvoices,
-    top_vendor: topVendor,
+    tax_validation_check: taxErrors,
+    missing_po_check: missingPOs,
+    audited_mis_summary: auditedSummary,
+    total_billed: totalBilled,
+    total_leakage: totalLeakage,
+    audit_pass_rate: auditPassRate,
+    top_overcharging_vendor: topOverchargingVendor,
+    unique_invoices_count: totalInvoices,
   };
 }
 
 /**
- * Interactive DuckDB SQL Sandbox Query Executor
- * Allows users to run SQL against raw_invoices, cleaned_mis_summary, or violations
+ * Interactive DuckDB SQL Sandbox Executor
  */
 export function executeInteractiveSql(
   query: string,
-  rawInvoices: FlattenedRow[],
-  cleanedSummary: CleanedMISRecord[],
-  violations: {
-    mismatches: CalcMismatchViolation[];
-    duplicates: DuplicateViolation[];
-    nulls: NullCheckViolation[];
-  }
+  rawInvoices: FlattenedSupplierRow[],
+  auditedSummary: AuditedMISRecord[]
 ): { success: boolean; data?: any[]; columns?: string[]; error?: string; executionTimeMs: number } {
-  const startTime = performance.now();
+  const start = performance.now();
   const trimmed = query.trim().replace(/;+$/, '');
 
   try {
     const lower = trimmed.toLowerCase();
+    const sourceData: any[] = lower.includes('from audited_mis_summary') || lower.includes('from audited')
+      ? [...auditedSummary]
+      : [...rawInvoices];
 
-    // Determine target table
-    let sourceData: any[] = [];
-    if (lower.includes('from cleaned_mis_summary') || lower.includes('from cleaned_mis')) {
-      sourceData = [...cleanedSummary];
-    } else if (lower.includes('from calc_total_mismatch') || lower.includes('from mismatches')) {
-      sourceData = [...violations.mismatches];
-    } else if (lower.includes('from duplicate_check') || lower.includes('from duplicates')) {
-      sourceData = [...violations.duplicates];
-    } else if (lower.includes('from null_check') || lower.includes('from nulls')) {
-      sourceData = [...violations.nulls];
-    } else {
-      sourceData = [...rawInvoices];
-    }
-
-    // Check for aggregate query (e.g. GROUP BY vendor_name)
     if (lower.includes('group by')) {
-      // Group by vendor_name aggregation
-      const groupField = lower.includes('vendor_name') ? 'vendor_name' : lower.includes('currency') ? 'currency' : 'audit_status';
-      const grouped = new Map<string, { count: number; total_spend: number; items_sum: number }>();
+      const groupField = lower.includes('vendor_name') ? 'vendor_name' : lower.includes('audit_status') ? 'audit_status' : 'currency';
+      const grouped = new Map<string, { count: number; total_billed: number; leakage: number }>();
 
       for (const row of sourceData) {
         const key = String(row[groupField] || 'Unknown');
-        const curr = grouped.get(key) || { count: 0, total_spend: 0, items_sum: 0 };
+        const curr = grouped.get(key) || { count: 0, total_billed: 0, leakage: 0 };
         curr.count += 1;
-        curr.total_spend += Number(row.total_amount_due || row.line_item_total || 0);
-        curr.items_sum += Number(row.items_sum || row.line_item_total || 0);
+        curr.total_billed += Number(row.total_amount_due || row.line_item_total || 0);
+        curr.leakage += Number(row.leakage_amount || 0);
         grouped.set(key, curr);
       }
 
       const result = Array.from(grouped.entries()).map(([key, val]) => ({
         [groupField]: key,
         invoice_count: val.count,
-        total_spend: Number(val.total_spend.toFixed(2)),
-        avg_spend: Number((val.total_spend / Math.max(val.count, 1)).toFixed(2)),
+        total_billed: Number(val.total_billed.toFixed(2)),
+        identified_leakage: Number(val.leakage.toFixed(2)),
       }));
 
-      // Sort
       if (lower.includes('desc')) {
-        result.sort((a, b) => b.total_spend - a.total_spend);
-      } else {
-        result.sort((a, b) => a.total_spend - b.total_spend);
+        result.sort((a, b) => b.total_billed - a.total_billed);
       }
 
-      const columns = [groupField, 'invoice_count', 'total_spend', 'avg_spend'];
-      const endTime = performance.now();
+      const end = performance.now();
       return {
         success: true,
         data: result,
-        columns,
-        executionTimeMs: Math.round((endTime - startTime) * 10) / 10,
+        columns: [groupField, 'invoice_count', 'total_billed', 'identified_leakage'],
+        executionTimeMs: Math.round((end - start) * 10) / 10,
       };
     }
 
-    // Filtering (WHERE)
-    let filtered = sourceData;
-    if (lower.includes('where')) {
-      if (lower.includes("audit_status != 'verified clean'") || lower.includes("audit_status <> 'verified clean'")) {
-        filtered = filtered.filter((r) => r.audit_status && r.audit_status !== 'Verified Clean');
-      } else if (lower.includes("audit_status = 'verified clean'")) {
-        filtered = filtered.filter((r) => r.audit_status === 'Verified Clean');
-      } else if (lower.includes('variance > 0') || lower.includes('variance > 0.02')) {
-        filtered = filtered.filter((r) => (r.variance || 0) > 0.02);
-      } else if (lower.includes('is null')) {
-        filtered = filtered.filter((r) => r.invoice_date == null || !r.invoice_date);
-      }
-    }
-
-    // Limit
-    const limitMatch = lower.match(/limit\s+(\d+)/);
-    if (limitMatch) {
-      const limit = parseInt(limitMatch[1], 10);
-      filtered = filtered.slice(0, limit);
+    // Filters
+    let filtered: any[] = sourceData;
+    if (lower.includes("audit_status != 'verified'") || lower.includes("audit_status <> 'verified'")) {
+      filtered = filtered.filter((r) => r.audit_status && r.audit_status !== 'VERIFIED');
+    } else if (lower.includes("audit_status = 'verified'")) {
+      filtered = filtered.filter((r) => r.audit_status === 'VERIFIED');
     }
 
     const columns = filtered.length > 0 ? Object.keys(filtered[0]) : ['result'];
-    const endTime = performance.now();
-
+    const end = performance.now();
     return {
       success: true,
       data: filtered,
       columns,
-      executionTimeMs: Math.round((endTime - startTime) * 10) / 10,
+      executionTimeMs: Math.round((end - start) * 10) / 10,
     };
   } catch (err: any) {
     return {
       success: false,
-      error: err.message || 'SQL execution failed',
+      error: err.message || 'Execution error',
       executionTimeMs: 0,
     };
   }
