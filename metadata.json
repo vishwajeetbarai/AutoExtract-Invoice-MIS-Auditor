@@ -1,0 +1,6 @@
+{
+  "name": "AutoExtract MIS & Executive Control Tower",
+  "description": "Production-grade automated invoice & document extraction, DuckDB SQL hygiene validation, and executive MIS dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
